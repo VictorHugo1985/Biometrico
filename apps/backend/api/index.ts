@@ -1,26 +1,46 @@
-import 'reflect-metadata';
-import * as dotenv from 'dotenv';
-dotenv.config();
+import express, { Request, Response } from 'express';
+import { Pool } from 'pg';
 
-import { NestFactory } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
-import { AppModule } from '../src/app.module';
-import * as express from 'express';
-import { IncomingMessage, ServerResponse } from 'http';
+const app = express();
+app.use(express.json());
 
-const expressApp = express();
-const adapter = new ExpressAdapter(expressApp);
-let initialized = false;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 1,
+});
 
-async function bootstrap() {
-  if (!initialized) {
-    const app = await NestFactory.create(AppModule, adapter, { logger: false });
-    await app.init();
-    initialized = true;
+app.post('/webhooks/crosschex', async (req: Request, res: Response) => {
+  const headers = req.headers as Record<string, string>;
+  const requestId = headers['requestid'];
+  const authorizeSign = headers['authorize-sign'];
+  const secret = process.env.CROSSCHEX_WEBHOOK_SECRET;
+  const firmaValida = !secret || authorizeSign === secret;
+
+  console.log(`Webhook | requestId: ${requestId} | firma: ${firmaValida}`);
+
+  try {
+    await pool.query(
+      `INSERT INTO auditoria_webhooks
+         (id_solicitud_crosschex, recibido_en, cabeceras, payload, firma_valida, estado_procesamiento)
+       VALUES ($1, NOW(), $2, $3, $4, $5)`,
+      [
+        requestId ?? null,
+        JSON.stringify(headers),
+        req.body ? JSON.stringify(req.body) : null,
+        firmaValida,
+        firmaValida ? 'procesado' : 'rechazado',
+      ],
+    );
+  } catch (e) {
+    console.error('DB error:', (e as Error).message);
   }
-}
 
-export default async function handler(req: IncomingMessage, res: ServerResponse) {
-  await bootstrap();
-  expressApp(req as any, res as any);
-}
+  res.status(200).json({ code: '200', msg: 'success' });
+});
+
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+export default app;

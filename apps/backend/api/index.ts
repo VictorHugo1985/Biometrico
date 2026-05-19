@@ -12,79 +12,102 @@ const pool = new Pool({
 
 // ── Dashboard principal ────────────────────────────────────────────────────────
 app.get('/', async (_req: Request, res: Response) => {
-  let rows: any[] = [];
+  let eventos: any[] = [];
+  let audit: any[] = [];
   let dbError = '';
 
   try {
-    const result = await pool.query(`
-      SELECT
-        aw.id,
-        aw.id_solicitud_crosschex,
-        aw.recibido_en AT TIME ZONE 'America/Bogota' AS recibido_cot,
-        aw.cabeceras,
-        aw.payload,
-        aw.firma_valida,
-        aw.estado_procesamiento,
-        aw.notas_procesamiento,
-        c.nombre   AS colaborador_nombre,
-        c.apellido AS colaborador_apellido,
-        c.codigo_empleado
-      FROM auditoria_webhooks aw
-      LEFT JOIN eventos_biometricos eb ON eb.id = aw.evento_biometrico_id
-      LEFT JOIN colaboradores c ON c.id = eb.colaborador_id
-      ORDER BY aw.recibido_en DESC
-      LIMIT 50
-    `);
-    rows = result.rows;
+    const [evRes, awRes] = await Promise.all([
+      pool.query(`
+        SELECT
+          eb.id,
+          eb.hora_marcacion AT TIME ZONE 'America/Bogota' AS hora_cot,
+          COALESCE(tv.descripcion, 'Tipo ' || eb.codigo_tipo_verificacion) AS tipo_verificacion,
+          c.nombre           AS colaborador_nombre,
+          c.apellido         AS colaborador_apellido,
+          c.codigo_empleado  AS workno,
+          d.nombre           AS dispositivo,
+          d.ubicacion        AS ubicacion,
+          eb.origen
+        FROM eventos_biometricos eb
+        JOIN  colaboradores          c  ON c.id  = eb.colaborador_id
+        JOIN  dispositivos_biometricos d ON d.id = eb.dispositivo_id
+        LEFT JOIN tipos_verificacion tv ON tv.codigo = eb.codigo_tipo_verificacion
+        ORDER BY eb.hora_marcacion DESC
+        LIMIT 50
+      `),
+      pool.query(`
+        SELECT
+          aw.id_solicitud_crosschex,
+          aw.recibido_en AT TIME ZONE 'America/Bogota' AS recibido_cot,
+          aw.firma_valida,
+          aw.estado_procesamiento,
+          aw.notas_procesamiento,
+          aw.payload
+        FROM auditoria_webhooks aw
+        ORDER BY aw.recibido_en DESC
+        LIMIT 30
+      `),
+    ]);
+    eventos = evRes.rows;
+    audit   = awRes.rows;
   } catch (e) {
     dbError = (e as Error).message;
   }
 
-  const badge = (estado: string) => {
+  const fmtTime = (ts: string) =>
+    new Date(ts).toLocaleString('es', { timeZone: 'America/Bogota', hour12: false });
+
+  const badgeCss = (estado: string) => {
     const map: Record<string, string> = {
-      procesado: '#16a34a',
-      rechazado: '#dc2626',
-      fallido:   '#d97706',
-      duplicado: '#6366f1',
+      procesado: '#16a34a', rechazado: '#dc2626',
+      fallido: '#d97706',   duplicado: '#6366f1',
     };
     return `background:${map[estado] ?? '#6b7280'}`;
   };
 
-  const fmtTime = (ts: string) =>
-    new Date(ts).toLocaleString('es', { timeZone: 'America/Bogota', hour12: false });
+  const origenBadge = (origen: string) =>
+    origen === 'webhook'
+      ? `<span style="font-size:0.65rem;padding:1px 7px;border-radius:9999px;background:#0ea5e9;color:#fff">webhook</span>`
+      : `<span style="font-size:0.65rem;padding:1px 7px;border-radius:9999px;background:#8b5cf6;color:#fff">csv</span>`;
 
-  const getEmployee = (r: any) => {
-    if (r.colaborador_nombre) return `${r.colaborador_nombre} ${r.colaborador_apellido}`;
-    const records = r.payload?.records;
-    if (records?.[0]?.employee?.workno) return `workno: ${records[0].employee.workno}`;
-    return '—';
-  };
-
-  const rows_html = rows.length === 0
+  const eventosHtml = eventos.length === 0
     ? `<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:2rem">
-        ${dbError ? '⚠ ' + dbError : 'Sin eventos registrados aún.'}
+        ${dbError ? '⚠ ' + dbError : 'Sin eventos procesados aún.'}
        </td></tr>`
-    : rows.map(r => {
-        const records  = r.payload?.records ?? [];
-        const checkTime = records[0]?.check_time
-          ? fmtTime(records[0].check_time)
-          : fmtTime(r.recibido_cot);
-        const nota = r.notas_procesamiento
-          ? `<br><span style="color:#f87171;font-size:0.7rem">${r.notas_procesamiento}</span>`
-          : '';
-        return `
-        <tr>
-          <td style="color:#9ca3af;white-space:nowrap">${checkTime}</td>
-          <td>${getEmployee(r)}</td>
-          <td style="font-family:monospace;font-size:0.7rem;color:#6b7280">${(r.id_solicitud_crosschex ?? '—').slice(0, 16)}</td>
-          <td style="text-align:center">${r.firma_valida ? '✅' : '❌'}</td>
-          <td>
-            <span style="padding:2px 10px;border-radius:9999px;font-size:0.75rem;color:#fff;${badge(r.estado_procesamiento)}">${r.estado_procesamiento}</span>
-            ${nota}
-          </td>
-          <td style="font-size:0.75rem;color:#9ca3af">${records.length > 0 ? records.length + ' marca(s)' : '—'}</td>
-        </tr>`;
-      }).join('');
+    : eventos.map(r => `
+      <tr>
+        <td style="white-space:nowrap;color:#94a3b8">${fmtTime(r.hora_cot)}</td>
+        <td>
+          <span style="color:#f1f5f9;font-weight:600">${r.colaborador_nombre} ${r.colaborador_apellido}</span>
+          <br><span style="font-size:0.7rem;color:#64748b">workno: ${r.workno}</span>
+        </td>
+        <td style="font-size:0.8rem;color:#94a3b8">${r.tipo_verificacion}</td>
+        <td style="font-size:0.8rem;color:#94a3b8">
+          ${r.dispositivo}
+          ${r.ubicacion ? `<br><span style="font-size:0.65rem;color:#64748b">${r.ubicacion}</span>` : ''}
+        </td>
+        <td>${origenBadge(r.origen)}</td>
+      </tr>`).join('');
+
+  const auditHtml = audit.map(r => {
+    const records = r.payload?.records ?? [];
+    const nota = r.notas_procesamiento
+      ? `<br><span style="color:#f87171;font-size:0.65rem">${r.notas_procesamiento}</span>` : '';
+    return `
+      <tr>
+        <td style="color:#64748b;white-space:nowrap;font-size:0.75rem">${fmtTime(r.recibido_cot)}</td>
+        <td style="font-family:monospace;font-size:0.65rem;color:#6b7280">${(r.id_solicitud_crosschex ?? '—').slice(0, 20)}</td>
+        <td style="text-align:center;font-size:0.8rem">${r.firma_valida ? '✅' : '❌'}</td>
+        <td>
+          <span style="padding:1px 8px;border-radius:9999px;font-size:0.7rem;color:#fff;${badgeCss(r.estado_procesamiento)}">${r.estado_procesamiento}</span>
+          ${nota}
+        </td>
+        <td style="font-size:0.7rem;color:#64748b">${records.length > 0 ? records.length + ' reg.' : '—'}</td>
+      </tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:1rem">Sin registros de auditoría.</td></tr>`;
+
+  const now = new Date().toLocaleString('es', { timeZone: 'America/Bogota', hour12: false });
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -92,56 +115,73 @@ app.get('/', async (_req: Request, res: Response) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="refresh" content="30">
-  <title>Biometrico — Webhooks</title>
+  <title>Biometrico — Dashboard</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif;min-height:100vh}
-    header{background:#1e293b;border-bottom:1px solid #334155;padding:1.25rem 2rem;display:flex;align-items:center;justify-content:space-between}
-    header h1{font-size:1.25rem;font-weight:700;color:#f8fafc}
+    header{background:#1e293b;border-bottom:1px solid #334155;padding:1.25rem 2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+    header h1{font-size:1.1rem;font-weight:700;color:#f8fafc}
     header h1 span{color:#38bdf8}
     .meta{font-size:0.75rem;color:#64748b}
     .meta strong{color:#94a3b8}
-    main{padding:2rem}
+    main{padding:1.5rem 2rem;display:flex;flex-direction:column;gap:1.5rem}
     .card{background:#1e293b;border:1px solid #334155;border-radius:0.75rem;overflow:hidden}
-    .card-header{padding:1rem 1.5rem;border-bottom:1px solid #334155;display:flex;align-items:center;gap:0.5rem}
-    .card-header h2{font-size:0.875rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
-    .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+    .card-header{padding:.875rem 1.5rem;border-bottom:1px solid #334155;display:flex;align-items:center;gap:.5rem}
+    .card-header h2{font-size:0.8rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;flex:1}
+    .card-header .count{font-size:0.75rem;color:#64748b}
+    .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite;flex-shrink:0}
+    .dot-dim{background:#475569;animation:none}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-    table{width:100%;border-collapse:collapse;font-size:0.875rem}
-    th{padding:.75rem 1rem;text-align:left;font-size:0.7rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #334155;white-space:nowrap}
-    td{padding:.75rem 1rem;border-bottom:1px solid #1e293b;vertical-align:top}
+    table{width:100%;border-collapse:collapse;font-size:0.85rem}
+    th{padding:.6rem 1rem;text-align:left;font-size:0.65rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #334155;white-space:nowrap}
+    td{padding:.65rem 1rem;border-bottom:1px solid #1e293b;vertical-align:middle}
     tr:hover td{background:#0f172a}
     tr:last-child td{border-bottom:none}
   </style>
 </head>
 <body>
 <header>
-  <h1>☁ <span>Biometrico</span> — Panel de Webhooks</h1>
-  <div class="meta">
-    <strong>${rows.length}</strong> eventos · actualiza cada 30s
-    &nbsp;·&nbsp; ${new Date().toLocaleString('es', { timeZone: 'America/Bogota', hour12: false })}
-  </div>
+  <h1>☁ <span>Biometrico</span></h1>
+  <div class="meta">actualiza cada 30 s &nbsp;·&nbsp; <strong>${now}</strong></div>
 </header>
 <main>
+
   <div class="card">
     <div class="card-header">
       <div class="dot"></div>
-      <h2>Últimos eventos CrossChex</h2>
+      <h2>Registros Biométricos</h2>
+      <span class="count">${eventos.length} eventos</span>
     </div>
     <table>
-      <thead>
-        <tr>
-          <th>Hora marcación (COT)</th>
-          <th>Colaborador</th>
-          <th>Request ID</th>
-          <th>Firma</th>
-          <th>Estado</th>
-          <th>Registros</th>
-        </tr>
-      </thead>
-      <tbody>${rows_html}</tbody>
+      <thead><tr>
+        <th>Hora (COT)</th>
+        <th>Colaborador</th>
+        <th>Verificación</th>
+        <th>Dispositivo</th>
+        <th>Origen</th>
+      </tr></thead>
+      <tbody>${eventosHtml}</tbody>
     </table>
   </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="dot dot-dim"></div>
+      <h2>Auditoría Webhooks</h2>
+      <span class="count">${audit.length} entradas</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Recibido (COT)</th>
+        <th>Request ID</th>
+        <th>Firma</th>
+        <th>Estado</th>
+        <th>Regs.</th>
+      </tr></thead>
+      <tbody>${auditHtml}</tbody>
+    </table>
+  </div>
+
 </main>
 </body>
 </html>`;

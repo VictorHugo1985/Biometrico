@@ -16,8 +16,7 @@
     "primereact": "^10.8.0",
     "primeicons": "^7.0.0",
     "primeflex": "^3.3.1",
-    "js-cookie": "^3.0.5",
-    "@biometrico/types": "*"
+    "js-cookie": "^3.0.5"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

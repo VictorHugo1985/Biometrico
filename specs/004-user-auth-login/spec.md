@@ -16,6 +16,10 @@
 - Q: ¿El sistema bloquea los intentos de login tras N fallos consecutivos? → A: No. El sistema no implementa bloqueo por intentos fallidos.
 - Q: ¿Se permiten sesiones concurrentes desde múltiples dispositivos? → A: Sí. Un usuario puede tener sesiones activas en múltiples dispositivos simultáneamente.
 
+### Session 2026-05-20
+
+- Q: ¿Se usa Supabase Auth o autenticación custom para las sesiones? → A: Autenticación custom con tablas propias (`sesiones_usuario`, `tokens_recuperacion`, `intentos_login`). El backend emite y valida tokens propios. No depende de Supabase Auth.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Login con Correo y Contraseña (Priority: P1)
@@ -96,7 +100,7 @@ Como **usuario**, quiero poder recuperar el acceso a mi cuenta si olvido mi cont
 
 ### Functional Requirements
 
-- **FR-001**: El sistema DEBE permitir el inicio de sesión mediante correo electrónico y contraseña para los tres roles: Administrador, Supervisor y Colaborador.
+- **FR-001**: El sistema DEBE permitir el inicio de sesión mediante correo electrónico y contraseña para los cuatro roles: Administrador, Supervisor, Caja y Colaborador.
 - **FR-002**: El sistema DEBE redirigir al usuario a su dashboard inicial correspondiente según su rol inmediatamente después de un login exitoso.
 - **FR-003**: El sistema DEBE denegar el acceso ante credenciales incorrectas con un mensaje de error genérico que no revele si el fallo fue en el correo o en la contraseña.
 - **FR-004**: El sistema DEBE negar el acceso a usuarios con cuentas desactivadas con un mensaje diferenciado del de credenciales incorrectas.
@@ -133,6 +137,6 @@ Como **usuario**, quiero poder recuperar el acceso a mi cuenta si olvido mi cont
 - El correo electrónico es el identificador único de cada usuario del sistema; no se soporta login por nombre de usuario ni número de teléfono.
 - La opción "Recordar contraseña" aplica al dispositivo actual del usuario; no sincroniza entre dispositivos.
 - El sistema de envío de correos transaccionales (para el reset de contraseña) es un servicio externo ya configurado en el entorno; no está en el alcance de esta especificación.
-- Los tres roles (Administrador, Supervisor, Colaborador) comparten el mismo flujo de login; la diferenciación de acceso ocurre después de la autenticación, no durante.
+- Los cuatro roles (Administrador, Supervisor, Caja, Colaborador) comparten el mismo flujo de login; la diferenciación de acceso ocurre después de la autenticación, no durante.
 - El tiempo de expiración de sesión por inactividad (por defecto 8 horas) es configurable por el Administrador del sistema.
 - La función de "Recordar contraseña" almacena las credenciales cifradas (correo y contraseña) en el dispositivo del usuario; no implica sesión permanente en el servidor. La responsabilidad del cifrado del almacenamiento local recae en el mecanismo nativo del dispositivo/navegador. Si el dispositivo es comprometido físicamente, las credenciales podrían ser accesibles; el usuario debe ser advertido de esto antes de activar la opción en dispositivos compartidos.

@@ -74,11 +74,12 @@ Como **desarrollador**, quiero poder añadir un nuevo paquete o módulo al works
 - **FR-006**: La documentación DEBE definir la estructura de carpetas y convenciones de nomenclatura para cada tipo de paquete (frontend, backend, librería compartida).
 - **FR-007**: El workspace DEBE soportar paquetes internos compartidos (tipos, utilidades comunes) que pueden ser importados por frontend y backend sin publicación en registros externos.
 - **FR-008**: El workspace DEBE incluir variables de entorno de ejemplo (`.env.example`) con todas las variables requeridas y sus descripciones, para que cualquier desarrollador pueda configurar su entorno local sin consultar fuentes externas.
+- **FR-009**: La aplicación frontend DEBE tener la librería de componentes de interfaz de usuario (PrimeReact) configurada e integrada en el workspace desde el inicio del entorno, incluyendo el tema visual base y los estilos globales necesarios, de modo que cualquier desarrollador pueda usar los componentes sin configuración adicional.
 
 ### Key Entities
 
 - **Workspace**: Repositorio monorepo raíz con configuración compartida; contiene todos los paquetes y aplicaciones del proyecto.
-- **Aplicación Frontend**: Aplicación web orientada al usuario final dentro del workspace.
+- **Aplicación Frontend**: Aplicación web orientada al usuario final dentro del workspace, construida sobre Next.js con PrimeReact como librería de componentes de interfaz.
 - **Aplicación Backend**: Servicio de lógica de negocio y API dentro del workspace.
 - **Paquete Compartido**: Librería interna del workspace que puede ser consumida por múltiples aplicaciones (tipos, utilidades, configuraciones).
 - **Configuración Compartida**: Conjunto de reglas de calidad de código (tipado, linting, formateo) que todos los paquetes del workspace heredan.
@@ -96,7 +97,7 @@ Como **desarrollador**, quiero poder añadir un nuevo paquete o módulo al works
 ## Assumptions
 
 - El equipo ha decidido utilizar un monorepo con Turborepo como gestor del workspace; esta decisión está tomada y no está en el alcance de esta especificación.
-- Las tecnologías del stack ya han sido elegidas: Next.js para el frontend, Nest.js para el backend, y Supabase como plataforma de base de datos. La especificación documenta los requisitos del entorno resultante, no la elección del stack.
+- Las tecnologías del stack ya han sido elegidas: Next.js para el frontend, Nest.js para el backend, Supabase como plataforma de base de datos, y **PrimeReact** como librería de componentes de interfaz de usuario para el frontend. La especificación documenta los requisitos del entorno resultante, no la elección del stack.
 - Los desarrolladores tienen acceso a internet para descargar dependencias durante la configuración inicial.
 - El sistema operativo objetivo es macOS o Linux para el entorno de desarrollo local; Windows con WSL2 queda fuera del alcance del MVP.
 - La instancia de Supabase para desarrollo local puede ejecutarse localmente mediante la CLI oficial de Supabase o apuntar a una instancia remota de desarrollo compartida.

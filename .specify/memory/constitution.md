@@ -1,14 +1,11 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (none) → 1.0.0
-Added principles: I through VII (initial ratification)
-Added sections: Restricciones Tecnológicas, Flujo de Desarrollo, Gobernanza
-Removed sections: none (first version)
+Version change: 1.2.0 → 1.3.0
+Added: Principio IX — Simplicidad de la Experiencia de Usuario
+Rationale: el sistema debe minimizar la fricción en tareas frecuentes; la complejidad en UI debe justificarse por necesidad de negocio.
 Templates requiring updates:
-  - .specify/templates/plan-template.md ⚠ pending — verify stack and test discipline alignment
-  - .specify/templates/spec-template.md ⚠ pending — verify scope sections match domain modules
-  - .specify/templates/tasks-template.md ⚠ pending — add task types: ajuste, justificación, configuración
+  - .specify/templates/plan-template.md ⚠ pending — verify RBAC sections include Caja
 Deferred TODOs: none
 -->
 
@@ -27,6 +24,8 @@ El historial completo de eventos DEBE ser siempre reconstruible desde la base de
 
 Toda liquidación de horas (ordinarias, extras) y bonos (transporte, alimentación) DEBE producir
 el mismo resultado dado el mismo conjunto de entradas en cualquier momento.
+Los bonos de transporte y alimentación son parte del alcance v1 y DEBEN incluirse en la spec de
+liquidación semanal (spec 007) antes de su planificación técnica.
 Cada cálculo de pago DEBE dejar una traza de auditoría que vincule: eventos biométricos de entrada,
 reglas de negocio aplicadas (versión vigente), y monto resultante.
 Recalcular el pago de un colaborador para cualquier semana cerrada DEBE ser posible en cualquier momento.
@@ -34,7 +33,9 @@ Recalcular el pago de un colaborador para cualquier semana cerrada DEBE ser posi
 ### III. Reglas de Negocio Configurables (NO NEGOCIABLE)
 
 Los horarios, tarifas por hora, umbrales de hora extra, rangos de bonos y descuentos DEBEN ser
-configurables por colaborador o grupo; ninguna regla de negocio puede estar hardcodeada en el código.
+configurables por colaborador o por departamento/área (grupo); ninguna regla de negocio puede estar
+hardcodeada en el código. Un colaborador hereda las reglas de su departamento con posibilidad de
+override individual; el departamento es la entidad canónica de agrupación de reglas.
 Cada cambio de configuración DEBE ser versionado con fecha de vigencia, de modo que el cálculo
 de semanas pasadas use siempre la configuración vigente en ese período.
 
@@ -47,10 +48,11 @@ la regla por defecto es una semana activa y el resto cerradas e inmutables.
 
 ### V. Control de Acceso Basado en Roles (RBAC)
 
-Tres roles fijos definen los límites de acceso:
-- **Administrador**: acceso total — configuración, cierre de semana, aprobación de pagos.
-- **Supervisor**: gestión del equipo asignado — justificaciones, visualización de asistencia, ajustes con aprobación.
-- **Colaborador**: autoservicio de solo lectura — su propio historial, marcaciones y estado de pago.
+Cuatro roles fijos definen los límites de acceso:
+- **Administrador**: acceso total — configuración, cierre de semana, aprobación de liquidaciones y pagos. Puede actuar en nombre de cualquier otro rol.
+- **Supervisor**: visibilidad de lectura sobre todas las áreas (dashboard, registros biométricos); acciones de escritura (justificaciones, ajustes, confirmación de bonos) restringidas al equipo/departamento que tiene asignado.
+- **Caja**: gestión de pagos — recibe consolidados aprobados por el supervisor, puede agregar ajustes (descuentos e incrementos con motivo obligatorio) y confirma el pago efectivo. Sin acceso a configuración de liquidación, registros biométricos ni gestión de colaboradores.
+- **Colaborador**: autoservicio de solo lectura — su propio historial, marcaciones, bonos y estado de pago.
 
 Ninguna operación de escritura sensible (ajuste, cierre, pago) DEBE ejecutarse sin verificación de rol.
 
@@ -68,9 +70,31 @@ aceptable para operación en vivo (objetivo: menos de 60 segundos desde el event
 El sistema NO DEBE depender exclusivamente de procesamiento batch para las vistas de asistencia activa.
 Las vistas históricas cerradas pueden ser batch; las vistas en curso DEBEN ser reactivas.
 
+### VIII. Diseño Mobile-First
+
+El sistema DEBE diseñarse con enfoque **mobile-first**: toda pantalla y flujo se diseña primero para dispositivos móviles (viewport ≥ 320 px) y luego se adapta progresivamente a pantallas más grandes (tablet y escritorio).
+
+Ninguna vista del sistema puede ser exclusiva de escritorio. Las vistas de **dashboard de asistencia**, **administración de colaboradores**, **liquidación semanal**, **bonos**, **pago por Caja** y el **autoservicio del colaborador** DEBEN ser completamente funcionales y usables en dispositivos móviles sin degradación de funcionalidad.
+
+Los componentes de interfaz DEBEN adaptarse al tamaño de pantalla disponible: tablas largas colapsan a tarjetas o listas en móvil; formularios se presentan en columna única; acciones críticas son accesibles sin scroll horizontal.
+
+### IX. Simplicidad de la Experiencia de Usuario
+
+El sistema DEBE minimizar la fricción en las tareas frecuentes. Cada flujo principal — registrar asistencia, generar liquidación, confirmar pago, consultar bonos — DEBE completarse en el menor número de pasos posible sin sacrificar trazabilidad ni control.
+
+Los formularios DEBEN proveer valores predeterminados sensatos donde el sistema pueda inferirlos; el usuario solo ingresa datos que el sistema genuinamente no puede determinar. Las opciones avanzadas o de uso poco frecuente DEBEN estar disponibles pero ocultas por defecto (divulgación progresiva).
+
+Los mensajes de error DEBEN ser accionables: indicar qué ocurrió y qué debe hacer el usuario para resolverlo. No se mostrarán trazas técnicas, códigos de error internos ni terminología del sistema al usuario final.
+
+Las acciones irreversibles (aprobar liquidación, confirmar pago, dar de baja a un colaborador) DEBEN requerir confirmación explícita con descripción clara de las consecuencias. Las acciones reversibles NO DEBEN requerir confirmación redundante.
+
+La interfaz DEBE usar el vocabulario del negocio: colaborador, período, liquidación, bono, caja. No se expondrán términos técnicos de infraestructura al usuario.
+
+Toda complejidad adicional en la UI (wizards, modales en cascada, tablas anidadas, flujos de más de 3 pasos) DEBE justificarse por una necesidad de negocio documentada en la spec correspondiente. La complejidad sin justificación es rechazada.
+
 ## Restricciones Tecnológicas y de Seguridad
 
-- El sistema se entrega como **aplicación web** accesible desde navegador moderno (responsive).
+- El sistema se entrega como **aplicación web** accesible desde navegador moderno, con diseño responsive mobile-first (Principio VIII).
 - Los datos de nómina y biométricos son información sensible: DEBEN transmitirse y almacenarse cifrados.
 - La aplicación DEBE tolerar picos de eventos biométricos concurrentes sin pérdida de registros
   (por ejemplo, entrada/salida masiva al inicio y fin de turno).
@@ -100,9 +124,9 @@ Toda enmienda DEBE:
 2. Documentar el motivo del cambio.
 3. Actualizar la fecha de última enmienda.
 
-Todo PR o decisión de implementación relevante DEBE verificar cumplimiento con los principios I–VII
+Todo PR o decisión de implementación relevante DEBE verificar cumplimiento con los principios I–IX
 antes de ser aprobado.
 La complejidad adicional DEBE justificarse explícitamente contra un principio constitucional;
 la complejidad sin justificación es rechazada.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-18 | **Last Amended**: 2026-05-18
+**Version**: 1.3.0 | **Ratified**: 2026-05-18 | **Last Amended**: 2026-05-20

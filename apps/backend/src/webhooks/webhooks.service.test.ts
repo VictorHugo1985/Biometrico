@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import * as crypto from 'crypto';
 import { WebhooksService } from './webhooks.service';
 
 const mockPool = { query: vi.fn() };
@@ -19,69 +18,66 @@ function makePayload(overrides = {}) {
   };
 }
 
-function signBody(body: object, secret: string): string {
-  const raw = Buffer.from(JSON.stringify(body));
-  return crypto.createHmac('sha256', secret).update(raw).digest('hex');
-}
-
-// ─── verifySignature ─────────────────────────────────────────────────────────
+// ─── verifySignature (direct comparison — FR-002) ────────────────────────────
 
 describe('WebhooksService.verifySignature', () => {
-  const SECRET = 'test-secret';
+  const SECRET = 'Jodaout2026';
 
   beforeEach(() => {
     vi.resetAllMocks();
     vi.stubEnv('CROSSCHEX_WEBHOOK_SECRET', SECRET);
   });
 
-  it('returns true for a valid HMAC signature', () => {
+  it('returns true when authorize-sign equals the configured secret', () => {
     const svc = makeService();
-    const raw = Buffer.from('{"hello":"world"}');
-    const sig = crypto.createHmac('sha256', SECRET).update(raw).digest('hex');
-    expect(svc.verifySignature(raw, sig)).toBe(true);
+    expect(svc.verifySignature(Buffer.from('{}'), SECRET)).toBe(true);
   });
 
-  it('returns false for a wrong signature', () => {
+  it('returns false when authorize-sign differs from secret', () => {
     const svc = makeService();
-    const raw = Buffer.from('{"hello":"world"}');
-    expect(svc.verifySignature(raw, 'deadsignature00000000000000000000000000000000000000000000000000000')).toBe(false);
+    expect(svc.verifySignature(Buffer.from('{}'), 'wrong-secret')).toBe(false);
   });
 
-  it('returns false when rawBody is undefined', () => {
-    const svc = makeService();
-    expect(svc.verifySignature(undefined, 'anything')).toBe(false);
-  });
-
-  it('returns false when signature is empty', () => {
+  it('returns false when signature is empty string', () => {
     const svc = makeService();
     expect(svc.verifySignature(Buffer.from('{}'), '')).toBe(false);
   });
 
-  it('returns true (permissive) when secret is not configured', () => {
+  it('returns false when lengths differ', () => {
+    const svc = makeService();
+    expect(svc.verifySignature(Buffer.from('{}'), SECRET + 'x')).toBe(false);
+  });
+
+  it('returns true (permissive) when CROSSCHEX_WEBHOOK_SECRET not configured', () => {
     vi.stubEnv('CROSSCHEX_WEBHOOK_SECRET', '');
     const svc = makeService();
     expect(svc.verifySignature(Buffer.from('{}'), 'any')).toBe(true);
+  });
+
+  it('rawBody parameter is ignored — comparison is secret vs header only', () => {
+    const svc = makeService();
+    // rawBody undefined should not affect result when secret matches
+    expect(svc.verifySignature(undefined, SECRET)).toBe(true);
   });
 });
 
 // ─── handleCrossChex ─────────────────────────────────────────────────────────
 
 describe('WebhooksService.handleCrossChex', () => {
-  const SECRET = 'test-secret';
+  const SECRET = 'Jodaout2026';
 
   beforeEach(() => {
     vi.resetAllMocks();
     vi.stubEnv('CROSSCHEX_WEBHOOK_SECRET', SECRET);
   });
 
-  it('rejects invalid signature — no DB calls except auditoria', async () => {
+  it('rejects invalid signature — logs audit, does not insert evento', async () => {
     const svc = makeService();
     const body = makePayload();
-    const raw = Buffer.from(JSON.stringify(body));
 
     mockPool.query.mockResolvedValueOnce({ rows: [] }); // insertAuditoria
 
-    const result = await svc.handleCrossChex(raw, { 'authorize-sign': 'bad-sig' }, body);
+    const result = await svc.handleCrossChex(Buffer.from('{}'), { 'authorize-sign': 'bad' }, body);
     expect(result.firmaValida).toBe(false);
     expect(result.resultado).toBeNull();
   });
@@ -89,14 +85,12 @@ describe('WebhooksService.handleCrossChex', () => {
   it('marks duplicado when id_solicitud_externo already exists', async () => {
     const svc = makeService();
     const body = makePayload();
-    const raw = Buffer.from(JSON.stringify(body));
-    const sig = signBody(body, SECRET);
 
     mockPool.query
       .mockResolvedValueOnce({ rows: [{ id: 'existing-uuid' }] }) // dup check
       .mockResolvedValueOnce({ rows: [] });                        // insertAuditoria
 
-    const result = await svc.handleCrossChex(raw, { 'authorize-sign': sig }, body);
+    const result = await svc.handleCrossChex(Buffer.from('{}'), { 'authorize-sign': SECRET }, body);
     expect(result.firmaValida).toBe(true);
     expect(result.resultado?.estado).toBe('duplicado');
   });
@@ -104,15 +98,13 @@ describe('WebhooksService.handleCrossChex', () => {
   it('marks fallido when colaborador not found', async () => {
     const svc = makeService();
     const body = makePayload();
-    const raw = Buffer.from(JSON.stringify(body));
-    const sig = signBody(body, SECRET);
 
     mockPool.query
-      .mockResolvedValueOnce({ rows: [] })  // dup check — no dup
+      .mockResolvedValueOnce({ rows: [] })  // dup check
       .mockResolvedValueOnce({ rows: [] })  // colaborador not found
       .mockResolvedValueOnce({ rows: [] }); // insertAuditoria
 
-    const result = await svc.handleCrossChex(raw, { 'authorize-sign': sig }, body);
+    const result = await svc.handleCrossChex(Buffer.from('{}'), { 'authorize-sign': SECRET }, body);
     expect(result.resultado?.estado).toBe('fallido');
     expect(result.resultado?.motivo).toContain('colaborador no registrado');
   });
@@ -120,16 +112,14 @@ describe('WebhooksService.handleCrossChex', () => {
   it('marks fallido when dispositivo not found', async () => {
     const svc = makeService();
     const body = makePayload();
-    const raw = Buffer.from(JSON.stringify(body));
-    const sig = signBody(body, SECRET);
 
     mockPool.query
-      .mockResolvedValueOnce({ rows: [] })                   // dup check
+      .mockResolvedValueOnce({ rows: [] })                    // dup check
       .mockResolvedValueOnce({ rows: [{ id: 'col-uuid' }] }) // colaborador found
-      .mockResolvedValueOnce({ rows: [] })                   // dispositivo not found
-      .mockResolvedValueOnce({ rows: [] });                  // insertAuditoria
+      .mockResolvedValueOnce({ rows: [] })                    // dispositivo not found
+      .mockResolvedValueOnce({ rows: [] });                   // insertAuditoria
 
-    const result = await svc.handleCrossChex(raw, { 'authorize-sign': sig }, body);
+    const result = await svc.handleCrossChex(Buffer.from('{}'), { 'authorize-sign': SECRET }, body);
     expect(result.resultado?.estado).toBe('fallido');
     expect(result.resultado?.motivo).toContain('dispositivo no registrado');
   });
@@ -137,8 +127,6 @@ describe('WebhooksService.handleCrossChex', () => {
   it('returns procesado and inserts evento on happy path', async () => {
     const svc = makeService();
     const body = makePayload();
-    const raw = Buffer.from(JSON.stringify(body));
-    const sig = signBody(body, SECRET);
 
     mockPool.query
       .mockResolvedValueOnce({ rows: [] })                    // dup check
@@ -147,12 +135,11 @@ describe('WebhooksService.handleCrossChex', () => {
       .mockResolvedValueOnce({ rows: [] })                    // INSERT evento
       .mockResolvedValueOnce({ rows: [] });                   // insertAuditoria
 
-    const result = await svc.handleCrossChex(raw, { 'authorize-sign': sig }, body);
+    const result = await svc.handleCrossChex(Buffer.from('{}'), { 'authorize-sign': SECRET }, body);
     expect(result.firmaValida).toBe(true);
     expect(result.resultado?.estado).toBe('procesado');
     expect(result.resultado?.id_solicitud_externo).toBe('REQ-001');
 
-    // Verify INSERT was called with correct origen
     const insertCall = mockPool.query.mock.calls[3];
     expect(insertCall[0]).toContain("'webhook'");
   });

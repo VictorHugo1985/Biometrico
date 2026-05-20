@@ -14,6 +14,12 @@
 
 - Q: ¿Qué acción debe tomar el sistema con los registros de asistencia recibidos? → A: Solo persistirlos en base de datos local (sin reenvío a sistemas externos).
 
+### Session 2026-05-20
+
+- Q: ¿Qué hace el sistema cuando el `personId`/`workno` del evento no coincide con ningún colaborador local? → A: Marcar como `fallido` en `auditoria_webhooks`, no insertar en `eventos_biometricos`, responder HTTP 200. El campo `colaboradores.codigo_empleado` es equivalente al `workno` de Anviz y es la clave de resolución.
+- Q: ¿Cómo valida CrossChex la autenticidad del webhook (`authorize-sign`)? → A: CrossChex envía el secreto configurado literalmente como valor del header. La validación es comparación directa con `timingSafeEqual` (no HMAC).
+- Q: ¿Dónde se almacena el token JWT de CrossChex API entre llamadas? → A: Solo en memoria del proceso (singleton en `CrossChexService`); si el proceso reinicia, re-autentica automáticamente. No requiere tabla en DB.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Recepción en Tiempo Real de Registros de Asistencia (Priority: P1)
@@ -76,9 +82,9 @@ El sistema puede consultar registros de asistencia históricos directamente desd
 ### Functional Requirements
 
 - **FR-001**: El sistema DEBE exponer un endpoint HTTP público que acepte peticiones POST de CrossChex Cloud con el Content-Type `application/json`.
-- **FR-002**: El sistema DEBE validar el header `authorize-sign` de cada webhook entrante usando el secreto configurado, para verificar la autenticidad del origen.
+- **FR-002**: El sistema DEBE validar el header `authorize-sign` de cada webhook entrante comparándolo directamente (con `timingSafeEqual`) contra el secreto configurado en `CROSSCHEX_WEBHOOK_SECRET`. CrossChex envía el secreto literal como valor del header — no se usa HMAC.
 - **FR-003**: El sistema DEBE responder con HTTP 200 y el cuerpo `{"code":"200","msg":"success"}` ante cualquier webhook recibido (válido o inválido), para evitar que CrossChex agote los reintentos innecesariamente.
-- **FR-004**: El sistema DEBE persistir los datos del registro de asistencia de cada webhook válido: tipo de verificación (`checktype`), fecha/hora (`checktime`), datos del dispositivo (`device.serial_number`, `device.name`) y datos del empleado (`employee.first_name`, `employee.last_name`, `employee.workno`).
+- **FR-004**: El sistema DEBE persistir los datos del registro de asistencia de cada webhook válido: tipo de verificación (`checktype`), fecha/hora (`checktime`), datos del dispositivo (`device.serial_number`, `device.name`) y datos del empleado. La resolución del colaborador se realiza buscando `colaboradores.codigo_empleado = personId` (webhook) o `= employee.workno` (REST API). Si no se encuentra el colaborador, el evento se registra como `fallido` en `auditoria_webhooks` y **no** se inserta en `eventos_biometricos`.
 - **FR-005**: El sistema DEBE detectar y descartar eventos duplicados usando el `requestId` del header del webhook.
 - **FR-006**: El sistema DEBE autenticarse contra la API REST de CrossChex Cloud usando `api_key` y `api_secret` para obtener un token JWT.
 - **FR-007**: El sistema DEBE renovar automáticamente el token JWT antes de que expire, sin intervención manual.
@@ -88,8 +94,8 @@ El sistema puede consultar registros de asistencia históricos directamente desd
 
 ### Key Entities
 
-- **RegistroAsistencia**: `requestId` (deduplicación), `checktype` (tipo verificación biométrica), `checktime` (ISO 8601), `device_serial`, `device_name`, `employee_workno`, `employee_first_name`, `employee_last_name`, `received_at`, `source` (webhook/api)
-- **TokenJWT**: `token`, `expires_at`, `created_at` — para gestión de autenticación con la API REST
+- **RegistroAsistencia** → persiste en `eventos_biometricos`: `id_solicitud_externo` (= `requestId` para webhook; `api-{serial}-{checktime}` para REST), `colaborador_id` (FK resuelto por `codigo_empleado = workno`), `dispositivo_id` (FK), `codigo_tipo_verificacion` (= `checktype`), `hora_marcacion` (= `checktime`), `origen` (`webhook` | `sincronizacion_api`), `payload_crudo` (JSONB con payload original)
+- **TokenJWT** (en memoria, no en DB): `token`, `expiresAt` — singleton en `CrossChexService`; se renueva automáticamente si `expiresAt - 5min < now`
 - **EventoWebhook**: `request_id`, `received_at`, `is_valid`, `raw_headers`, `raw_payload` — para auditoría y diagnóstico
 
 ## Success Criteria *(mandatory)*

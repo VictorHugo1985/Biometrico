@@ -40,19 +40,18 @@ export class WebhooksService {
     return { firmaValida: true, resultado };
   }
 
-  verifySignature(rawBody: Buffer | undefined, received: string): boolean {
+  verifySignature(_rawBody: Buffer | undefined, received: string): boolean {
     const secret = process.env.CROSSCHEX_WEBHOOK_SECRET;
     if (!secret) {
       this.logger.warn('CROSSCHEX_WEBHOOK_SECRET no configurado — aceptando todas las firmas');
       return true;
     }
-    if (!rawBody || !received) return false;
-    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    if (!received) return false;
     try {
-      return crypto.timingSafeEqual(
-        Buffer.from(expected, 'hex'),
-        Buffer.from(received.padEnd(expected.length, '0').substring(0, expected.length), 'hex'),
-      );
+      const a = Buffer.from(secret);
+      const b = Buffer.from(received);
+      if (a.length !== b.length) return false;
+      return crypto.timingSafeEqual(a, b);
     } catch {
       return false;
     }

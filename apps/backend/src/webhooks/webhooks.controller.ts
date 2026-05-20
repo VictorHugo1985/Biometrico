@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Post,
-  Headers,
-  Body,
-  HttpCode,
-  Req,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Controller, Post, Headers, Body, HttpCode, Req } from '@nestjs/common';
 import { RawBodyRequest } from '@nestjs/common';
 import { Request } from 'express';
 import { Public } from '../auth/auth.guard';
@@ -25,10 +17,8 @@ export class WebhooksController {
     @Headers() headers: Record<string, string>,
     @Body() body: CrossChexPayload,
   ) {
-    const { firmaValida } = await this.webhooksService.handleCrossChex(req.rawBody, headers, body);
-    if (!firmaValida) {
-      throw new UnauthorizedException({ code: '401', msg: 'invalid signature' });
-    }
+    // Always respond 200 — CrossChex retries on non-200 responses (FR-003)
+    await this.webhooksService.handleCrossChex(req.rawBody, headers, body);
     return { code: '200', msg: 'success' };
   }
 }

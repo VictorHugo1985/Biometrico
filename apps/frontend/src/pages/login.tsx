@@ -11,7 +11,7 @@ const COOKIE_NAME = 'biometrico_token';
 
 export default function LoginPage() {
   const router = useRouter();
-  const redirect = (router.query.redirect as string) ?? '/dashboard';
+  const redirect = (router.query.redirect as string) ?? '/ingesta';
 
   const [correo, setCorreo] = useState('');
   const [contrasena, setContrasena] = useState('');

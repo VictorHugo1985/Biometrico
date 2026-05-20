@@ -58,7 +58,7 @@ export class AuthService {
 
     // Create a placeholder session to get the session ID first
     const tempToken = jwt.sign(
-      { sub: usuario.id, rol: usuario.rol, sid: 'pending' },
+      { sub: usuario.id, correo: usuario.correo, rol: usuario.rol, sid: 'pending' },
       JWT_SECRET,
       { expiresIn } as jwt.SignOptions,
     );
@@ -73,7 +73,7 @@ export class AuthService {
 
     // Re-sign with the real session ID
     const token = jwt.sign(
-      { sub: usuario.id, rol: usuario.rol, sid: sessionId },
+      { sub: usuario.id, correo: usuario.correo, rol: usuario.rol, sid: sessionId },
       JWT_SECRET,
       { expiresIn } as jwt.SignOptions,
     );

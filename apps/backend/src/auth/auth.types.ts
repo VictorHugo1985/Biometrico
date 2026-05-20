@@ -1,5 +1,6 @@
 export interface JWTPayload {
   sub: string;
+  correo: string;
   rol: string;
   sid: string;
   exp: number;

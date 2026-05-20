@@ -35,7 +35,7 @@ export class AuthController {
     const isProd = process.env.NODE_ENV === 'production';
     const maxAge = body.recordar ? 30 * 24 * 60 * 60 * 1000 : undefined;
 
-    res.cookie('auth_token', result.token, {
+    res.cookie('biometrico_token', result.token, {
       httpOnly: true,
       secure: isProd,
       sameSite: 'lax',
@@ -52,7 +52,7 @@ export class AuthController {
     if (payload?.sid) {
       await this.authService.logout(payload.sid);
     }
-    res.clearCookie('auth_token');
+    res.clearCookie('biometrico_token');
     return { data: null, message: 'Sesión cerrada' };
   }
 

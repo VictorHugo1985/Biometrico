@@ -1,8 +1,14 @@
 import type { AppProps } from 'next/app';
 import { useRouter } from 'next/router';
 import { useEffect } from 'react';
+import { PrimeReactProvider } from 'primereact/api';
 import { AuthProvider, useAuthContext } from '@/providers/AuthProvider';
 import { AppShell } from '@/components/shell/AppShell';
+
+import 'primereact/resources/themes/lara-light-blue/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
 
 const PUBLIC_ROUTES = ['/login', '/recuperar-contrasena', '/403', '/404'];
 
@@ -38,8 +44,10 @@ function AppContent({ Component, pageProps }: AppProps) {
 
 export default function App(props: AppProps) {
   return (
-    <AuthProvider>
-      <AppContent {...props} />
-    </AuthProvider>
+    <PrimeReactProvider>
+      <AuthProvider>
+        <AppContent {...props} />
+      </AuthProvider>
+    </PrimeReactProvider>
   );
 }

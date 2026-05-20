@@ -6,3 +6,8 @@ build/
 .DS_Store
 .turbo/
 Credenciales
+
+# Next.js
+apps/frontend/.next/
+apps/frontend/out/
+apps/frontend/.env*.local
